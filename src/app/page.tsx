@@ -3,15 +3,13 @@
 import React, { useState, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
 
-// ⭐ [중요] 아래 따옴표 안에 본인의 Supabase Project URL과 anon public Key를 붙여넣으세요!
-const SUPABASE_URL = "https://yrvkdmndajzdmnukpuga.supabase.co/rest/v1/";
+// ⭐ 오류가 나지 않던 원래의 정확한 주소 형식 (슬래시 포함) 반영 완료
+const SUPABASE_URL = "https://yrvkdmndajzdmnukpuga.supabase.co/";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlydmtkbW5kYWp6ZG1udWtwdWdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI4MDY4MjMsImV4cCI6MjEwODM4MjgyM30.UdXFYQoamyQb0yv2xvNlRNv9xXhdd7rprgHs0So3dhs";
 
-// 주소가 정상적으로 입력되었는지 확인 후 연결
 const isConfigured = SUPABASE_URL.startsWith("http") && SUPABASE_ANON_KEY.length > 20;
 const supabase = isConfigured ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
-// 데이터 타입 정의
 interface Solution {
   id: number;
   question_id: number;
@@ -65,6 +63,16 @@ export default function GosiApp() {
   const [activeInstructorTab, setActiveInstructorTab] = useState(0);
   const [loading, setLoading] = useState(true);
 
+  // 관리자 모드 상태
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [adminPasswordInput, setAdminPasswordInput] = useState("");
+
+  // 공지사항 상태
+  const [announcement, setAnnouncement] = useState("📢 [공지] 동일 문제 선택 시 기존 논점들이 자동완성으로 안내되어 중복 질문을 막아줍니다!");
+  const [isEditingNotice, setIsEditingNotice] = useState(false);
+  const [noticeInput, setNoticeInput] = useState("");
+
   // 검색 및 필터 상태
   const [selectedSubject, setSelectedSubject] = useState("전체");
   const [searchQuery, setSearchQuery] = useState("");
@@ -73,7 +81,7 @@ export default function GosiApp() {
   const [instructors, setInstructors] = useState<string[]>(DEFAULT_INSTRUCTORS);
   const [books, setBooks] = useState<string[]>(DEFAULT_BOOKS);
 
-  // 답변(새 풀이) 입력 상태
+  // 답변 입력 상태
   const [newInstructor, setNewInstructor] = useState("");
   const [newAnswerText, setNewAnswerText] = useState("");
   const [selectedAnswerInstructor, setSelectedAnswerInstructor] = useState("이승철 와꾸");
@@ -85,24 +93,26 @@ export default function GosiApp() {
   const [qSubject, setQSubject] = useState("세법");
   const [qBook, setQBook] = useState("세법 연습서 (주민규)");
   const [newBookInput, setNewBookInput] = useState("");
+  
+  // 페이지/문제 번호 드롭다운 및 직접 입력 제어
   const [qPage, setQPage] = useState("");
+  const [isCustomPage, setIsCustomPage] = useState(false);
+  const [customPageInput, setCustomPageInput] = useState("");
+
   const [qTitle, setQTitle] = useState("");
   const [qContent, setQContent] = useState("");
   const [qBounty, setQBounty] = useState(200);
   const [qImage, setQImage] = useState<string | null>(null);
 
-  // 이미지 확대 보기 모달 상태
+  // 이미지 확대 보기
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
-  // 1. 처음 화면이 켜질 때 Supabase에서 데이터 불러오기
   const fetchAllData = async () => {
     if (!supabase) {
       setLoading(false);
       return;
     }
-    setLoading(true);
 
-    // 질문과 그에 달린 강사별 풀이(solutions) 함께 가져오기
     const { data: qData, error: qError } = await supabase
       .from("questions")
       .select("*, solutions(*)")
@@ -114,12 +124,18 @@ export default function GosiApp() {
         solutions: (q.solutions || []).sort((a: any, b: any) => a.id - b.id),
       }));
       setQuestions(formatted);
-      if (formatted.length > 0 && selectedQuestionId === null) {
-        setSelectedQuestionId(formatted[0].id);
+      if (formatted.length > 0) {
+        setSelectedQuestionId((prev) => (prev === null || !formatted.some(q => q.id === prev) ? formatted[0].id : prev));
+      } else {
+        setSelectedQuestionId(null);
       }
     }
 
-    // 추가된 강사/교재 옵션 가져오기
+    const { data: noticeData } = await supabase.from("announcements").select("*").order("id", { ascending: false }).limit(1);
+    if (noticeData && noticeData.length > 0) {
+      setAnnouncement(noticeData[0].content);
+    }
+
     const { data: optData } = await supabase.from("custom_options").select("*");
     if (optData) {
       const customInst = optData
@@ -139,20 +155,89 @@ export default function GosiApp() {
   useEffect(() => {
     const savedPoints = localStorage.getItem("cpa_points");
     if (savedPoints) setPoints(Number(savedPoints));
+    
+    const savedAdmin = localStorage.getItem("cpa_is_admin");
+    if (savedAdmin === "true") setIsAdmin(true);
+
     fetchAllData();
   }, []);
 
-  // 포인트 변경 시 브라우저에 저장
   const updatePoints = (newPt: number) => {
     setPoints(newPt);
     localStorage.setItem("cpa_points", String(newPt));
   };
 
-  // 현재 선택된 질문 객체
+  const handleAdminLogin = () => {
+    if (adminPasswordInput === "cpa1234") {
+      setIsAdmin(true);
+      localStorage.setItem("cpa_is_admin", "true");
+      setIsLoginModalOpen(false);
+      setAdminPasswordInput("");
+      alert("🔒 관리자 모드가 활성화되었습니다!");
+    } else {
+      alert("비밀번호가 틀렸습니다! (기본 비번: cpa1234)");
+    }
+  };
+
+  const handleAdminLogout = () => {
+    setIsAdmin(false);
+    localStorage.removeItem("cpa_is_admin");
+    alert("관리자 모드가 해제되었습니다.");
+  };
+
+  const handleSaveAnnouncement = async () => {
+    if (!isAdmin || !supabase) return;
+    if (!noticeInput.trim()) {
+      alert("공지 내용을 입력해 주세요!");
+      return;
+    }
+
+    await supabase.from("announcements").delete().neq("id", 0);
+    const { error } = await supabase.from("announcements").insert([{ content: noticeInput.trim() }]);
+
+    if (error) {
+      alert("공지 저장 오류: " + error.message);
+      return;
+    }
+
+    setAnnouncement(noticeInput.trim());
+    setIsEditingNotice(false);
+    setNoticeInput("");
+    alert("📢 상단 공지사항이 업데이트되었습니다!");
+  };
+
+  const handleDeleteQuestion = async (qId: number) => {
+    if (!isAdmin || !supabase) return;
+    if (!confirm("정말 이 질문과 모든 강사별 풀이를 삭제하시겠습니까?")) return;
+
+    const { error } = await supabase.from("questions").delete().eq("id", qId);
+    if (error) {
+      alert("삭제 중 오류 발생: " + error.message);
+      return;
+    }
+
+    alert("질문이 삭제되었습니다.");
+    await fetchAllData();
+  };
+
+  const handleDeleteSolution = async (solId: number) => {
+    if (!isAdmin || !supabase) return;
+    if (!confirm("이 강사 풀이법을 삭제하시겠습니까?")) return;
+
+    const { error } = await supabase.from("solutions").delete().eq("id", solId);
+    if (error) {
+      alert("답변 삭제 중 오류 발생: " + error.message);
+      return;
+    }
+
+    alert("풀이법이 삭제되었습니다.");
+    setActiveInstructorTab(0);
+    await fetchAllData();
+  };
+
   const selectedQuestion =
     questions.find((q) => q.id === selectedQuestionId) || questions[0];
 
-  // 이미지 파일을 Base64 문자열로 변환 (DB에 바로 저장 가능)
   const handleImageUpload = (
     e: React.ChangeEvent<HTMLInputElement>,
     setter: (url: string | null) => void
@@ -167,7 +252,6 @@ export default function GosiApp() {
     }
   };
 
-  // 새로운 강사 선택지 DB에 추가
   const handleAddInstructor = async () => {
     if (!newInstructor.trim() || !supabase) return;
     const formatted = newInstructor.includes("와꾸")
@@ -184,7 +268,6 @@ export default function GosiApp() {
     setNewInstructor("");
   };
 
-  // 새로운 교재 선택지 DB에 추가
   const handleAddBook = async () => {
     if (!newBookInput.trim() || !supabase) return;
     const formatted = newBookInput.trim();
@@ -198,11 +281,21 @@ export default function GosiApp() {
     setNewBookInput("");
   };
 
-  // 새 질문 Supabase DB에 등록하기
+  const availablePagesForBook = Array.from(
+    new Set(questions.filter((q) => q.book === qBook).map((q) => q.page))
+  );
+
+  const targetPageToCheck = isCustomPage ? customPageInput.trim() : qPage;
+  const existingPointsForThisProblem = questions.filter(
+    (q) => q.book === qBook && q.page === targetPageToCheck
+  );
+
   const handleCreateQuestion = async () => {
     if (!supabase) return;
-    if (!qPage.trim() || !qTitle.trim() || !qContent.trim()) {
-      alert("페이지/문제번호, 제목, 질문 내용을 모두 입력해 주세요!");
+    const finalPage = isCustomPage ? customPageInput.trim() : qPage;
+
+    if (!finalPage || !qTitle.trim() || !qContent.trim()) {
+      alert("문제 번호, 세부 논점 포인트 제목, 내용을 모두 입력해 주세요!");
       return;
     }
     if (points < qBounty) {
@@ -217,35 +310,36 @@ export default function GosiApp() {
           level: qLevel,
           subject: qSubject,
           book: qBook,
-          page: qPage,
-          title: qTitle,
+          page: finalPage,
+          title: qTitle.trim(),
           content: qContent,
           image_url: qImage || null,
           bounty: qBounty,
-          author: "실장_나",
+          author: isAdmin ? "관리자_실장" : "실장_나",
         },
       ])
       .select()
       .single();
 
     if (error) {
-      alert("질문 저장 중 오류가 발생했습니다: " + error.message);
+      alert("질문 저장 중 오류 발생: " + error.message);
       return;
     }
 
     updatePoints(points - qBounty);
     setIsAskModalOpen(false);
     setQPage("");
+    setCustomPageInput("");
+    setIsCustomPage(false);
     setQTitle("");
     setQContent("");
     setQImage(null);
 
     await fetchAllData();
     if (data) setSelectedQuestionId(data.id);
-    alert(`질문이 서버에 영구 등록되었습니다! (현상금 ${qBounty}P 차감)`);
+    alert(`해당 문제의 새로운 논점 포인트가 등록되었습니다! (현상금 ${qBounty}P 차감)`);
   };
 
-  // 새로운 강사별 풀이(답변) Supabase DB에 등록하기
   const handleAddSolution = async () => {
     if (!supabase || !selectedQuestion) return;
     if (!newAnswerText.trim()) {
@@ -257,7 +351,7 @@ export default function GosiApp() {
       {
         question_id: selectedQuestion.id,
         instructor: selectedAnswerInstructor,
-        author: "실장_나",
+        author: isAdmin ? "관리자_실장" : "실장_나",
         content: newAnswerText,
         image_url: answerImage || null,
         likes: 0,
@@ -266,7 +360,7 @@ export default function GosiApp() {
     ]);
 
     if (error) {
-      alert("답변 저장 중 오류가 발생했습니다: " + error.message);
+      alert("답변 저장 중 오류 발생: " + error.message);
       return;
     }
 
@@ -277,10 +371,9 @@ export default function GosiApp() {
 
     await fetchAllData();
     setActiveInstructorTab(nextTabIdx);
-    alert("새로운 강사 풀이법이 DB에 영구 등록되어 50P가 적립되었습니다!");
+    alert("새로운 강사 풀이법이 등록되어 50P가 적립되었습니다!");
   };
 
-  // 답변 추천(좋아요) DB 반영
   const handleLikeSolution = async (sol: Solution) => {
     if (!supabase) return;
     await supabase
@@ -290,7 +383,6 @@ export default function GosiApp() {
     await fetchAllData();
   };
 
-  // 답변 채택하기 DB 반영
   const handleAcceptSolution = async (sol: Solution) => {
     if (!supabase || !selectedQuestion) return;
     await supabase
@@ -301,34 +393,13 @@ export default function GosiApp() {
     alert(`이 풀이를 채택하여 답변자에게 현상금 ${selectedQuestion.bounty}P가 전달되었습니다!`);
   };
 
-  // 만약 아직 키를 안 넣었을 때 보여줄 안내 화면
-  if (!isConfigured) {
-    return (
-      <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center p-6">
-        <div className="max-w-lg w-full bg-slate-800 border border-slate-700 rounded-2xl p-6 space-y-4">
-          <span className="bg-amber-400 text-slate-900 font-extrabold px-2.5 py-1 rounded text-xs">
-            연결 대기 중
-          </span>
-          <h1 className="text-xl font-bold">
-            거의 다 됐습니다! Supabase 주소와 키를 넣어주세요 🔑
-          </h1>
-          <p className="text-sm text-slate-300 leading-relaxed">
-            Cursor 에디터에 열려있는 <code>page.tsx</code> 파일의{" "}
-            <strong className="text-amber-400">6번째, 7번째 줄</strong>에 본인의{" "}
-            <code>Project URL</code>과 <code>anon public Key</code>를 붙여넣고 저장(Ctrl+S)하면 즉시 연결됩니다!
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // 필터링된 질문 목록
   const filteredQuestions = questions.filter((q) => {
     const matchesSubject = selectedSubject === "전체" || q.subject === selectedSubject;
     const matchesSearch =
       q.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       q.book.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      q.page.toLowerCase().includes(searchQuery.toLowerCase());
+      q.page.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      q.content.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesSubject && matchesSearch;
   });
 
@@ -338,18 +409,39 @@ export default function GosiApp() {
       <header className="bg-slate-900 text-white px-6 py-4 flex justify-between items-center sticky top-0 z-20 shadow-md">
         <div className="flex items-center gap-3">
           <span className="bg-emerald-400 text-slate-900 font-extrabold px-2.5 py-1 rounded text-xs">
-            DB 연결됨 ●
+            DB 연동됨
           </span>
           <h1 className="text-lg md:text-xl font-bold tracking-tight">
             CPA 고시반 지식 아카이브
           </h1>
+          {isAdmin && (
+            <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded">
+              🛡️ 관리자 모드
+            </span>
+          )}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 md:gap-3">
+          {!isAdmin ? (
+            <button
+              onClick={() => setIsLoginModalOpen(true)}
+              className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-3 py-2 rounded-full border border-slate-700 transition"
+            >
+              🔒 관리자 로그인
+            </button>
+          ) : (
+            <button
+              onClick={handleAdminLogout}
+              className="bg-red-900/50 hover:bg-red-900 text-red-200 text-xs px-3 py-2 rounded-full border border-red-700 transition"
+            >
+              🔓 관리자 로그아웃
+            </button>
+          )}
+
           <button
             onClick={() => setIsAskModalOpen(true)}
             className="bg-blue-600 hover:bg-blue-500 text-white text-xs md:text-sm font-bold px-4 py-2 rounded-full shadow transition"
           >
-            ✍️ 새 질문 올리기
+            ✍️ 새 논점 질문 등록
           </button>
           <div className="bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-full text-sm flex items-center gap-2">
             <span className="text-amber-400 font-bold">💰</span>
@@ -358,10 +450,31 @@ export default function GosiApp() {
         </div>
       </header>
 
+      {/* 📢 상단 공지사항 배너 */}
+      <div className="bg-amber-500 text-slate-950 px-6 py-2.5 font-bold text-xs md:text-sm flex justify-between items-center shadow-inner">
+        <div className="flex items-center gap-2 overflow-hidden">
+          <span className="bg-slate-900 text-amber-400 px-2 py-0.5 rounded text-xs shrink-0">
+            실장 공지
+          </span>
+          <span className="truncate">{announcement}</span>
+        </div>
+        {isAdmin && (
+          <button
+            onClick={() => {
+              setNoticeInput(announcement);
+              setIsEditingNotice(true);
+            }}
+            className="bg-slate-900 text-white text-xs px-3 py-1 rounded hover:bg-slate-800 shrink-0 ml-2"
+          >
+            ✏️ 공지 수정
+          </button>
+        )}
+      </div>
+
       {/* 상단 네비게이션 탭 */}
       <nav className="bg-white border-b border-slate-200 px-6 flex gap-2 overflow-x-auto">
         {[
-          { id: "qna", label: "📚 학업 Q&A (와꾸 비교)" },
+          { id: "qna", label: "📚 학업 Q&A (문제 헤드 & 논점 포인트)" },
           { id: "wiki", label: "🧭 수험 전략 위키" },
           { id: "study", label: "🔥 원터치 스터디" },
           { id: "wallet", label: "💳 포인트 지갑" },
@@ -384,21 +497,21 @@ export default function GosiApp() {
       <main className="flex-1 max-w-6xl w-full mx-auto p-4 md:p-6">
         {loading ? (
           <div className="text-center py-20 text-slate-500 font-semibold">
-            ☁️ Supabase 데이터베이스에서 고시반 아카이브를 불러오는 중...
+            ☁️ 데이터를 불러오는 중...
           </div>
         ) : (
           activeTab === "qna" && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              {/* 왼쪽: 문제 검색, 과목 필터 및 질문 리스트 */}
+              {/* 왼쪽: 문제 헤드 & 논점 포인트 리스트 */}
               <div className="lg:col-span-5 space-y-4">
                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
                   <div className="flex justify-between items-center">
-                    <h2 className="font-bold text-slate-800">과목별 문제 아카이브</h2>
+                    <h2 className="font-bold text-slate-800">문제별 논점 포인트 아카이브</h2>
                     <button
                       onClick={() => setIsAskModalOpen(true)}
                       className="text-xs text-blue-600 font-bold hover:underline"
                     >
-                      + 질문 등록하기
+                      + 논점 질문 등록
                     </button>
                   </div>
 
@@ -406,7 +519,7 @@ export default function GosiApp() {
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="🔍 교재명, 페이지(예: 214), 키워드 검색..."
+                    placeholder="🔍 문제번호, 논점 포인트, 키워드 검색..."
                     className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-blue-500"
                   />
 
@@ -429,77 +542,114 @@ export default function GosiApp() {
                   </div>
                 </div>
 
-                {/* 질문 카드 리스트 */}
                 <div className="space-y-3">
-                  {filteredQuestions.map((q) => (
-                    <div
-                      key={q.id}
-                      onClick={() => {
-                        setSelectedQuestionId(q.id);
-                        setActiveInstructorTab(0);
-                      }}
-                      className={`p-4 rounded-xl border cursor-pointer transition-all ${
-                        selectedQuestion?.id === q.id
-                          ? "bg-blue-50/60 border-blue-500 shadow-sm"
-                          : "bg-white border-slate-200 hover:border-slate-300"
-                      }`}
-                    >
-                      <div className="flex justify-between items-start gap-2 mb-2">
-                        <div className="flex gap-1.5 flex-wrap">
-                          <span className="bg-slate-800 text-white text-xs px-2 py-0.5 rounded font-medium">
-                            {q.level}
-                          </span>
-                          <span className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded font-semibold">
-                            {q.subject}
-                          </span>
-                          <span className="bg-slate-100 text-slate-700 text-xs px-2 py-0.5 rounded font-medium">
-                            {q.book} · {q.page}
+                  {filteredQuestions.length === 0 ? (
+                    <div className="bg-white border rounded-xl p-8 text-center text-sm text-slate-400">
+                      등록된 논점 질문이 없습니다. 첫 질문을 올려보세요!
+                    </div>
+                  ) : (
+                    filteredQuestions.map((q) => (
+                      <div
+                        key={q.id}
+                        onClick={() => {
+                          setSelectedQuestionId(q.id);
+                          setActiveInstructorTab(0);
+                        }}
+                        className={`p-4 rounded-xl border cursor-pointer transition-all relative ${
+                          selectedQuestion?.id === q.id
+                            ? "bg-blue-50/60 border-blue-500 shadow-sm"
+                            : "bg-white border-slate-200 hover:border-slate-300"
+                        }`}
+                      >
+                        <div className="flex justify-between items-start gap-2 mb-2">
+                          <div className="flex gap-1.5 flex-wrap">
+                            <span className="bg-slate-900 text-amber-300 text-xs px-2 py-0.5 rounded font-extrabold">
+                              📌 {q.page}
+                            </span>
+                            <span className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded font-semibold">
+                              {q.subject}
+                            </span>
+                            <span className="bg-slate-100 text-slate-700 text-xs px-2 py-0.5 rounded font-medium">
+                              {q.book}
+                            </span>
+                          </div>
+                          <span className="bg-amber-100 text-amber-800 text-xs font-bold px-2 py-0.5 rounded-full shrink-0">
+                            {q.bounty}P
                           </span>
                         </div>
-                        <span className="bg-amber-100 text-amber-800 text-xs font-bold px-2 py-0.5 rounded-full shrink-0">
-                          {q.bounty}P
-                        </span>
+
+                        <h3 className="font-bold text-slate-900 text-sm mb-1">
+                          🎯 포인트: {q.title}
+                        </h3>
+                        <p className="text-xs text-slate-500 line-clamp-2">{q.content}</p>
+                        
+                        <div className="mt-3 flex justify-between items-center text-xs text-slate-400">
+                          <span>작성자: {q.author}</span>
+                          <div className="flex items-center gap-2">
+                            {isAdmin && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteQuestion(q.id);
+                                }}
+                                className="bg-red-100 text-red-600 hover:bg-red-200 font-bold px-2 py-1 rounded text-[11px]"
+                              >
+                                🗑️ 삭제
+                              </button>
+                            )}
+                            <span className="text-blue-600 font-semibold">
+                              풀이 {q.solutions?.length || 0}개 ➔
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                      <h3 className="font-bold text-slate-900 text-sm mb-1">{q.title}</h3>
-                      <p className="text-xs text-slate-500 line-clamp-2">{q.content}</p>
-                      <div className="mt-3 flex justify-between items-center text-xs text-slate-400">
-                        <span>작성자: {q.author}</span>
-                        <span className="text-blue-600 font-semibold">
-                          강사별 풀이 {q.solutions?.length || 0}개 ➔
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </div>
 
-              {/* 오른쪽: 선택된 문제 상세 & 강사별 와꾸 탭 비교 */}
+              {/* 오른쪽: 선택된 논점 포인트 상세 & 강사별 와꾸 비교 */}
               <div className="lg:col-span-7 space-y-6">
-                {selectedQuestion && (
+                {selectedQuestion ? (
                   <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
                     <div className="flex justify-between items-start mb-3">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="bg-slate-800 text-white text-xs px-2 py-1 rounded font-bold">
-                          {selectedQuestion.level}
+                        <span className="bg-slate-900 text-amber-300 text-xs px-2.5 py-1 rounded font-extrabold">
+                          📌 대표 문제: {selectedQuestion.page}
                         </span>
                         <span className="bg-blue-600 text-white text-xs px-2.5 py-1 rounded font-bold">
                           {selectedQuestion.subject}
                         </span>
                         <span className="text-sm font-bold text-slate-700">
-                          {selectedQuestion.book} ({selectedQuestion.page})
+                          {selectedQuestion.book}
                         </span>
                       </div>
-                      <span className="bg-amber-100 text-amber-800 text-xs font-extrabold px-3 py-1 rounded-full">
-                        현상금 {selectedQuestion.bounty}P
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="bg-amber-100 text-amber-800 text-xs font-extrabold px-3 py-1 rounded-full">
+                          현상금 {selectedQuestion.bounty}P
+                        </span>
+                        {isAdmin && (
+                          <button
+                            onClick={() => handleDeleteQuestion(selectedQuestion.id)}
+                            className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-3 py-1 rounded-full transition"
+                          >
+                            🗑️ 질문 삭제
+                          </button>
+                        )}
+                      </div>
                     </div>
 
-                    <h2 className="text-lg font-bold text-slate-900 mb-2">
-                      {selectedQuestion.title}
-                    </h2>
-                    <p className="text-sm text-slate-700 bg-slate-50 p-4 rounded-lg border border-slate-100 mb-4 whitespace-pre-line">
-                      {selectedQuestion.content}
-                    </p>
+                    <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl mb-4">
+                      <span className="text-xs font-bold text-blue-600 uppercase tracking-wide">
+                        수험 논점 포인트
+                      </span>
+                      <h2 className="text-base font-extrabold text-slate-900 mt-0.5 mb-2">
+                        🎯 {selectedQuestion.title}
+                      </h2>
+                      <p className="text-sm text-slate-700 whitespace-pre-line">
+                        {selectedQuestion.content}
+                      </p>
+                    </div>
 
                     {selectedQuestion.image_url && (
                       <div className="mb-6">
@@ -515,11 +665,11 @@ export default function GosiApp() {
                       </div>
                     )}
 
-                    {/* 강사별 풀이(와꾸) 비교 탭 */}
+                    {/* 강사별 풀이 비교 탭 */}
                     <div className="border-t border-slate-200 pt-5">
                       <div className="flex justify-between items-center mb-3">
                         <h3 className="text-sm font-bold text-slate-800">
-                          🔄 강사별 풀이 방식(와꾸) 비교해서 보기
+                          🔄 해당 논점에 대한 강사별 풀이 방식(와꾸) 비교
                         </h3>
                         <span className="text-xs text-slate-500">
                           총 {selectedQuestion.solutions.length}개의 풀이
@@ -528,7 +678,7 @@ export default function GosiApp() {
 
                       {selectedQuestion.solutions.length === 0 ? (
                         <div className="bg-slate-50 border border-dashed border-slate-300 rounded-xl p-6 text-center text-sm text-slate-500">
-                          아직 등록된 강사별 풀이가 없습니다. 첫 번째 풀이를 등록하고 포인트를 받아보세요!
+                          아직 등록된 강사별 풀이가 없습니다. 첫 번째 풀이를 등록해 보세요!
                         </div>
                       ) : (
                         <>
@@ -582,6 +732,18 @@ export default function GosiApp() {
                                       🏆 채택하기
                                     </button>
                                   )}
+                                  {isAdmin && (
+                                    <button
+                                      onClick={() =>
+                                        handleDeleteSolution(
+                                          selectedQuestion.solutions[activeInstructorTab].id
+                                        )
+                                      }
+                                      className="text-xs bg-red-600 hover:bg-red-700 text-white px-2.5 py-1 rounded-full font-bold transition"
+                                    >
+                                      🗑️ 답변 삭제
+                                    </button>
+                                  )}
                                 </div>
                               </div>
                               <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-line mb-3">
@@ -614,7 +776,7 @@ export default function GosiApp() {
                     {/* 새로운 강사 풀이 추가 폼 */}
                     <div className="mt-6 border-t border-slate-200 pt-5">
                       <h4 className="text-sm font-bold text-slate-800 mb-3">
-                        ➕ 다른 강사님 풀이법(와꾸)이나 손글씨 풀이 보태기 (+50P)
+                        ➕ 이 논점 포인트에 다른 강사님 풀이법(와꾸)이나 손글씨 보태기 (+50P)
                       </h4>
                       <div className="flex flex-col sm:flex-row gap-2 mb-3">
                         <select
@@ -649,7 +811,7 @@ export default function GosiApp() {
                         rows={3}
                         value={newAnswerText}
                         onChange={(e) => setNewAnswerText(e.target.value)}
-                        placeholder="내가 듣는 강사님의 와꾸나 풀이 접근법을 공유해 주세요!"
+                        placeholder="이 논점에 대한 강사별 와꾸 접근법이나 풀이 팁을 공유해 주세요!"
                         className="w-full border border-slate-300 rounded-lg p-3 text-sm mb-2"
                       />
 
@@ -665,9 +827,7 @@ export default function GosiApp() {
                         </label>
                         {answerImage && (
                           <div className="flex items-center gap-2">
-                            <span className="text-xs text-emerald-600 font-bold">
-                              ✅ 사진 첨부됨
-                            </span>
+                            <span className="text-xs text-emerald-600 font-bold">✅ 사진 첨부됨</span>
                             <button
                               onClick={() => setAnswerImage(null)}
                               className="text-xs text-red-500 underline"
@@ -682,9 +842,13 @@ export default function GosiApp() {
                         onClick={handleAddSolution}
                         className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-lg text-sm transition"
                       >
-                        이 문제에 새로운 풀이법 등록하기 (서버 저장)
+                        이 논점 포인트에 새로운 풀이법 등록하기
                       </button>
                     </div>
+                  </div>
+                ) : (
+                  <div className="bg-white p-12 rounded-xl border text-center text-slate-400">
+                    왼쪽 목록에서 논점 질문을 선택해 주세요.
                   </div>
                 )}
               </div>
@@ -693,12 +857,93 @@ export default function GosiApp() {
         )}
       </main>
 
-      {/* ✍️ 새 질문 올리기 모달 */}
+      {/* 🔒 관리자 로그인 모달 */}
+      {isLoginModalOpen && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl space-y-4">
+            <div className="flex justify-between items-center border-b pb-3">
+              <h3 className="font-bold text-slate-900">🔒 실장님 관리자 인증</h3>
+              <button
+                onClick={() => setIsLoginModalOpen(false)}
+                className="text-slate-400 font-bold"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="text-xs text-slate-600">
+              고시반 관리자 비밀번호를 입력해 주세요. (기본 비밀번호: <code className="bg-slate-100 font-bold text-blue-600">cpa1234</code>)
+            </p>
+            <input
+              type="password"
+              value={adminPasswordInput}
+              onChange={(e) => setAdminPasswordInput(e.target.value)}
+              placeholder="관리자 비밀번호 입력"
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleAdminLogin();
+              }}
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => setIsLoginModalOpen(false)}
+                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold py-2 rounded-lg"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleAdminLogin}
+                className="flex-1 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold py-2 rounded-lg"
+              >
+                관리자 모드 접속
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✏️ 공지사항 수정 모달 */}
+      {isEditingNotice && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4">
+            <div className="flex justify-between items-center border-b pb-3">
+              <h3 className="font-bold text-slate-900">📢 상단 공지사항 수정</h3>
+              <button onClick={() => setIsEditingNotice(false)} className="text-slate-400 font-bold">
+                ✕
+              </button>
+            </div>
+            <p className="text-xs text-slate-600">
+              고시반 실원들이 접속하자마자 볼 수 있는 상단 배너 문구를 수정하세요.
+            </p>
+            <textarea
+              rows={3}
+              value={noticeInput}
+              onChange={(e) => setNoticeInput(e.target.value)}
+              className="w-full border border-slate-300 rounded-lg p-3 text-sm"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => setIsEditingNotice(false)}
+                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold py-2 rounded-lg"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleSaveAnnouncement}
+                className="flex-1 bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold py-2 rounded-lg"
+              >
+                공지 업로드
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✍️ 새 논점 질문 등록 모달 */}
       {isAskModalOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center border-b border-slate-200 pb-3">
-              <h3 className="text-lg font-bold text-slate-900">✍️ 새 학업 질문 올리기</h3>
+              <h3 className="text-lg font-bold text-slate-900">✍️ 새 논점 포인트 질문 올리기</h3>
               <button
                 onClick={() => setIsAskModalOpen(false)}
                 className="text-slate-400 hover:text-slate-700 font-bold text-lg"
@@ -738,12 +983,14 @@ export default function GosiApp() {
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                교재 및 강사 선택
-              </label>
+              <label className="block text-xs font-bold text-slate-700 mb-1">교재 및 강사 선택</label>
               <select
                 value={qBook}
-                onChange={(e) => setQBook(e.target.value)}
+                onChange={(e) => {
+                  setQBook(e.target.value);
+                  setQPage("");
+                  setIsCustomPage(false);
+                }}
                 className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mb-2"
               >
                 {books.map((b) => (
@@ -757,7 +1004,7 @@ export default function GosiApp() {
                   type="text"
                   value={newBookInput}
                   onChange={(e) => setNewBookInput(e.target.value)}
-                  placeholder="목록에 없는 교재명 (예: 세법 워크북 강경태)"
+                  placeholder="목록에 없는 교재명 직접 입력"
                   className="border border-slate-300 rounded-lg px-3 py-1.5 text-xs flex-1"
                 />
                 <button
@@ -769,19 +1016,57 @@ export default function GosiApp() {
               </div>
             </div>
 
+            {/* 페이지 및 문제 번호 선택 */}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  페이지 및 문제 번호 (필수)
+                  📌 대표 문제 (페이지 및 번호)
                 </label>
-                <input
-                  type="text"
-                  value={qPage}
-                  onChange={(e) => setQPage(e.target.value)}
-                  placeholder="예: p.145 문제 4번"
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
-                />
+                {!isCustomPage ? (
+                  <div className="flex gap-1.5">
+                    <select
+                      value={qPage}
+                      onChange={(e) => {
+                        if (e.target.value === "__custom__") {
+                          setIsCustomPage(true);
+                          setQPage("");
+                        } else {
+                          setQPage(e.target.value);
+                        }
+                      }}
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-bold text-slate-900 bg-white"
+                    >
+                      <option value="">-- 기존 문제 선택 --</option>
+                      {availablePagesForBook.map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                      <option value="__custom__">➕새로운 문제 직접 입력...</option>
+                    </select>
+                  </div>
+                ) : (
+                  <div className="flex gap-1.5">
+                    <input
+                      type="text"
+                      value={customPageInput}
+                      onChange={(e) => setCustomPageInput(e.target.value)}
+                      placeholder="예: p.214 문제 3번"
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-bold text-slate-900"
+                    />
+                    <button
+                      onClick={() => {
+                        setIsCustomPage(false);
+                        setCustomPageInput("");
+                      }}
+                      className="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs px-2.5 rounded-lg font-bold shrink-0"
+                    >
+                      선택하기
+                    </button>
+                  </div>
+                )}
               </div>
+
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
                   현상금 포인트 (보유: {points}P)
@@ -800,14 +1085,39 @@ export default function GosiApp() {
               </div>
             </div>
 
+            {/* 💡 자동완성 안내 */}
+            {targetPageToCheck && existingPointsForThisProblem.length > 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-1.5">
+                <div className="flex items-center gap-1.5 text-xs font-extrabold text-amber-800">
+                  <span>💡 [자동완성 안내]</span>
+                  <span>이 문제에 이미 아래와 같은 논점들이 논의되어 있습니다!</span>
+                </div>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {existingPointsForThisProblem.map((ep) => (
+                    <span
+                      key={ep.id}
+                      className="bg-white border border-amber-300 text-amber-900 text-[11px] font-semibold px-2 py-0.5 rounded-md"
+                    >
+                      🎯 {ep.title}
+                    </span>
+                  ))}
+                </div>
+                <p className="text-[11px] text-slate-600 mt-1">
+                  위 논점들과 겹치지 않는 <b>새로운 누락 포인트</b>가 있다면 아래에 입력해 주세요.
+                </p>
+              </div>
+            )}
+
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">질문 제목</label>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                🎯 세부 수험 논점 포인트 (예: 유보 추인 타이밍 관련)
+              </label>
               <input
                 type="text"
                 value={qTitle}
                 onChange={(e) => setQTitle(e.target.value)}
-                placeholder="어떤 논리나 와꾸가 헷갈리는지 한 줄로 적어주세요"
-                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+                placeholder="이 문제 안에서 헷갈리는 구체적인 논점을 적어주세요"
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-bold text-blue-600"
               />
             </div>
 
@@ -817,7 +1127,7 @@ export default function GosiApp() {
                 rows={4}
                 value={qContent}
                 onChange={(e) => setQContent(e.target.value)}
-                placeholder="내가 푼 방식이나 막힌 부분, 혹은 비교하고 싶은 다른 강사님 풀이법을 적어주세요."
+                placeholder="내가 막힌 부분이나 비교하고 싶은 구체적인 접근법을 적어주세요."
                 className="w-full border border-slate-300 rounded-lg p-3 text-sm"
               />
             </div>
@@ -856,7 +1166,7 @@ export default function GosiApp() {
                 onClick={handleCreateQuestion}
                 className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-lg text-sm"
               >
-                {qBounty}P 걸고 질문 등록하기
+                {qBounty}P 걸고 논점 질문 등록
               </button>
             </div>
           </div>
