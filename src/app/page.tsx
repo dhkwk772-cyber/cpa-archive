@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
 
-// ⭐ 기존 방식 그대로 유지된 Supabase URL(슬래시 포함) 및 ANON KEY
+// ⭐ 기존 방식 그대로 유지된 Supabase URL 및 ANON KEY
 const SUPABASE_URL = "https://yrvkdmndajzdmnukpuga.supabase.co/";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlydmtkbW5kYWp6ZG1udWtwdWdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI4MDY4MjMsImV4cCI6MjEwODM4MjgyM30.UdXFYQoamyQb0yv2xvNlRNv9xXhdd7rprgHs0So3dhs";
 
@@ -16,6 +16,8 @@ interface UserProfile {
   nickname: string;
   is_gosiban: boolean;
   points: number;
+  equipped_badge?: string;
+  inventory?: string;
 }
 
 interface Solution {
@@ -43,6 +45,15 @@ interface Question {
   author: string;
   author_id?: string | null;
   solutions: Solution[];
+}
+
+interface ShopItem {
+  id: number;
+  category: string;
+  name: string;
+  price: number;
+  description: string;
+  icon: string;
 }
 
 interface WikiPost {
@@ -91,7 +102,7 @@ const MBTI_CATEGORIES = [
     id: "SP",
     label: "⚡ SP (ISTP·ESTP·ISFP·ESFP)",
     badge: "실전·유연형",
-    desc: "지루한 이론 회독보다 실전 모의고사(GS), 타임어택 문제 풀이, 스터디 강제성으로 효율을 극대화하는 성향입니다.",
+    desc: "지루한 이론 회독보다 실전 모의고사(GS), 타임어택 문제 풀이로 효율을 극대화하는 성향입니다.",
   },
   {
     id: "NT",
@@ -126,24 +137,6 @@ const INITIAL_WIKI_POSTS: WikiPost[] = [
       "NT 성향은 '그냥 외워'라는 말을 들으면 진도가 안 나갑니다.\n\n예를 들어 세법 의제배당이나 합병 세무조정을 볼 때, 한 강사님의 설명이 납득되지 않으면 즉시 이 앱의 Q&A 탭에서 다른 강사님 와꾸와 비교해 보세요.\n원리(Why)가 한 번 머릿속에 구조화되면, 시험장에서 처음 보는 신유형이 나와도 스스로 와꾸를 조립해서 풀어낼 수 있습니다.",
     likes: 24,
   },
-  {
-    id: 103,
-    mbti_group: "SP",
-    title: "[ESTP/ISTP] 책상에 10시간 앉아있기 힘들 때 쓰는 '타임어택 실전 공부법'",
-    author: "익명(🏅고시반)",
-    content:
-      "기본서 밑줄 그으며 정독하는 건 SP에게 고문입니다.\n\n이론 강의는 1.6배속으로 빠르게 넘기고, 바로 연습서와 객관식 문제를 부딪히면서 깨지세요!\n타이머를 20분 맞춰놓고 '이 안에 무조건 3문제 푼다'는 식으로 게임처럼 도파민을 돌게 만들면 집중력이 3배 이상 올라갑니다.",
-    likes: 15,
-  },
-  {
-    id: 104,
-    mbti_group: "NF",
-    title: "[INFP/INFJ] 모의고사 점수에 멘탈 흔들리지 않고 완주하는 마인드셋",
-    author: "🏅고시반_멘탈케어",
-    content:
-      "NF 수험생들은 GS 모의고사 등수 하나에 하루 종일 자책하며 시간을 날리기 쉽습니다.\n\n틀린 문제는 '내 능력 부족'이 아니라 '본시험 전에 미리 발견한 보물(논점 포인트)'이라고 정의를 바꾸세요.\n틀릴 때마다 이 아카이브에 질문을 올리거나 스크랩해 두면서 '오늘도 합격 확률을 1% 올렸다'고 스스로를 다독이는 루틴이 가장 중요합니다.",
-    likes: 21,
-  },
 ];
 
 export default function GosiApp() {
@@ -154,9 +147,14 @@ export default function GosiApp() {
   const [activeInstructorTab, setActiveInstructorTab] = useState(0);
   const [loading, setLoading] = useState(true);
 
-  // ⭐ 단권화 PDF 추출 대비용: 북마크(스크랩) 및 모아보기 필터 상태
+  // ⭐ 단권화 PDF 및 스크랩 필터 상태
   const [bookmarkedIds, setBookmarkedIds] = useState<number[]>([]);
   const [qnaFilterMode, setQnaFilterMode] = useState<"all" | "my" | "bookmarked">("all");
+
+  // 🎨 상점 및 인벤토리 상태
+  const [shopItems, setShopItems] = useState<ShopItem[]>([]);
+  const [equippedBadge, setEquippedBadge] = useState<string>("🐣 동차합격 기원");
+  const [inventory, setInventory] = useState<string[]>(["🐣 동차합격 기원"]);
 
   // 👤 사용자 로그인 및 프로필 상태
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -168,7 +166,7 @@ export default function GosiApp() {
   const [gosibanCode, setGosibanCode] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
 
-  // 🕵️ 익명 설정 상태 (질문/답변)
+  // 🕵️ 익명 설정 상태
   const [isQuestionAnonymous, setIsQuestionAnonymous] = useState(true);
   const [isAnswerAnonymous, setIsAnswerAnonymous] = useState(true);
 
@@ -179,7 +177,7 @@ export default function GosiApp() {
 
   // 📢 공지사항 상태 및 팝업 제어
   const [announcement, setAnnouncement] = useState(
-    "📢 [공지] 고시반 입실생 인증(코드: skkucpa) 가입 시 3,000P 시드머니 즉시 지급! 손글씨 사진 첨부 답변 시 +100P 지급 및 채택 시 현상금이 답변자에게 즉시 송금됩니다!"
+    "📢 [공지] 단권화 PDF 인쇄 기능 및 열품타 스타일 칭호 상점이 오픈되었습니다! 열심히 모은 포인트로 멋진 칭호를 장착해 보세요!"
   );
   const [isNoticeViewOpen, setIsNoticeViewOpen] = useState(false);
   const [isEditingNotice, setIsEditingNotice] = useState(false);
@@ -206,7 +204,6 @@ export default function GosiApp() {
   const [qBook, setQBook] = useState("세법 연습서 (주민규)");
   const [newBookInput, setNewBookInput] = useState("");
 
-  // 페이지/문제 번호 드롭다운 및 직접 입력 제어
   const [qPage, setQPage] = useState("");
   const [isCustomPage, setIsCustomPage] = useState(false);
   const [customPageInput, setCustomPageInput] = useState("");
@@ -240,6 +237,14 @@ export default function GosiApp() {
     if (data) {
       setUserProfile(data);
       setPoints(data.points);
+      if (data.equipped_badge) setEquippedBadge(data.equipped_badge);
+      if (data.inventory) {
+        try {
+          setInventory(JSON.parse(data.inventory));
+        } catch (e) {
+          setInventory([data.equipped_badge || "🐣 동차합격 기원"]);
+        }
+      }
     } else {
       const defaultNick = email.split("@")[0];
       const newProf = {
@@ -248,6 +253,8 @@ export default function GosiApp() {
         nickname: defaultNick,
         is_gosiban: false,
         points: 1000,
+        equipped_badge: "🐣 동차합격 기원",
+        inventory: JSON.stringify(["🐣 동차합격 기원"]),
       };
       await supabase.from("user_profiles").insert([newProf]);
       setUserProfile(newProf);
@@ -303,7 +310,18 @@ export default function GosiApp() {
       setBooks(Array.from(new Set([...DEFAULT_BOOKS, ...customBooks])));
     }
 
-    // MBTI 위키 데이터 불러오기
+    // 상점 아이템 불러오기
+    const { data: shopData } = await supabase.from("shop_items").select("*");
+    if (shopData && shopData.length > 0) {
+      setShopItems(shopData);
+    } else {
+      setShopItems([
+        { id: 1, category: "badge", name: "🔥 세법 마스터", price: 500, description: "열정 마크 칭호", icon: "🔥" },
+        { id: 2, category: "badge", name: "💎 와꾸 장인", price: 800, description: "와꾸 고수 칭호", icon: "💎" },
+        { id: 3, category: "badge", name: "☕ 아아중독 수험생", price: 300, description: "밤샘 뚝심 칭호", icon: "☕" },
+      ]);
+    }
+
     const { data: wikiData, error: wikiError } = await supabase
       .from("wiki_posts")
       .select("*")
@@ -331,6 +349,16 @@ export default function GosiApp() {
       }
     }
 
+    const savedBadge = localStorage.getItem("cpa_badge");
+    if (savedBadge) setEquippedBadge(savedBadge);
+
+    const savedInv = localStorage.getItem("cpa_inv");
+    if (savedInv) {
+      try {
+        setInventory(JSON.parse(savedInv));
+      } catch (e) {}
+    }
+
     if (supabase) {
       supabase.auth.getSession().then(({ data: { session } }) => {
         if (session?.user) {
@@ -356,7 +384,6 @@ export default function GosiApp() {
     }
   }, []);
 
-  // 북마크(단권화 스크랩) 토글 함수
   const toggleBookmark = (qId: number, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     const exists = bookmarkedIds.includes(qId);
@@ -367,7 +394,6 @@ export default function GosiApp() {
     localStorage.setItem("cpa_bookmarks", JSON.stringify(updated));
   };
 
-  // 내 포인트 업데이트
   const updatePoints = async (newPt: number) => {
     setPoints(newPt);
     localStorage.setItem("cpa_points", String(newPt));
@@ -380,17 +406,61 @@ export default function GosiApp() {
     }
   };
 
-  // 작성자 이름 결정 함수 ('실장' 대신 '관리자' 표기 적용)
-  const getAuthorDisplayName = (isAnon: boolean) => {
-    if (isAdmin && !isAnon) return "🛡️ 관리자";
-    if (!userProfile) return isAnon ? "익명" : "비회원_수험생";
-    if (isAnon) {
-      return userProfile.is_gosiban ? "익명(🏅고시반)" : "익명";
+  // 칭호 장착 함수
+  const handleEquipBadge = async (badgeName: string) => {
+    setEquippedBadge(badgeName);
+    localStorage.setItem("cpa_badge", badgeName);
+    if (userProfile && supabase) {
+      await supabase
+        .from("user_profiles")
+        .update({ equipped_badge: badgeName })
+        .eq("id", userProfile.id);
+      setUserProfile({ ...userProfile, equipped_badge: badgeName });
     }
-    return userProfile.is_gosiban ? `🏅${userProfile.nickname}` : userProfile.nickname;
+    alert(`✨ [${badgeName}] 칭호가 장착되었습니다!`);
   };
 
-  // 회원가입 / 로그인 처리
+  // 상점 아이템 구매 함수
+  const handleBuyItem = async (item: ShopItem) => {
+    if (points < item.price) {
+      alert("포인트가 부족합니다! 열심히 답변하고 논점을 등록해 포인트를 모아보세요.");
+      return;
+    }
+    if (inventory.includes(item.name)) {
+      alert("이미 보유하고 있는 아이템입니다!");
+      return;
+    }
+
+    const nextPoints = points - item.price;
+    const nextInv = [...inventory, item.name];
+
+    setInventory(nextInv);
+    localStorage.setItem("cpa_inv", JSON.stringify(nextInv));
+    await updatePoints(nextPoints);
+
+    if (userProfile && supabase) {
+      await supabase
+        .from("user_profiles")
+        .update({ inventory: JSON.stringify(nextInv) })
+        .eq("id", userProfile.id);
+    }
+
+    alert(`🎁 [${item.name}] 구매 완료! 지갑 & 상점 탭에서 장착하실 수 있습니다.`);
+  };
+
+  // 닉네임 옆에 장착한 칭호 배지 포함해서 반환하는 함수
+  const getAuthorDisplayName = (isAnon: boolean) => {
+    const badgePrefix = equippedBadge ? `[${equippedBadge}] ` : "";
+    if (isAdmin && !isAnon) return `🛡️ 관리자 ${badgePrefix}`;
+    if (!userProfile) return isAnon ? `익명 ${badgePrefix}` : `비회원 ${badgePrefix}`;
+    if (isAnon) {
+      return userProfile.is_gosiban ? `익명(🏅고시반) ${badgePrefix}` : `익명 ${badgePrefix}`;
+    }
+    return userProfile.is_gosiban
+      ? `🏅${userProfile.nickname} ${badgePrefix}`
+      : `${userProfile.nickname} ${badgePrefix}`;
+  };
+
   const handleAuthSubmit = async () => {
     if (!supabase) return;
     if (!authEmail.trim() || !authPassword.trim()) {
@@ -428,6 +498,8 @@ export default function GosiApp() {
           nickname: authNickname.trim(),
           is_gosiban: isGosibanMember,
           points: initialPoints,
+          equipped_badge: "🐣 동차합격 기원",
+          inventory: JSON.stringify(["🐣 동차합격 기원"]),
         };
         await supabase.from("user_profiles").insert([newProf]);
         setUserProfile(newProf);
@@ -637,7 +709,6 @@ export default function GosiApp() {
       .select()
       .single();
 
-    // 만약 SQL에서 author_id 컬럼 추가 전이라면 호환성을 위해 재시도
     if (error && error.message.includes("author_id")) {
       delete payload.author_id;
       const retry = await supabase.from("questions").insert([payload]).select().single();
@@ -727,17 +798,14 @@ export default function GosiApp() {
     await fetchAllData();
   };
 
-  // ⭐ 1단계 포인트 경제 핵심: 채택 권한 검증 및 답변자에게 실제 현상금(Bounty) 송금
   const handleAcceptSolution = async (sol: Solution) => {
     if (!supabase || !selectedQuestion) return;
 
-    // 1. 이미 채택된 답변이 있는지 확인
     if (selectedQuestion.solutions.some((s) => s.is_accepted)) {
       alert("이 질문에는 이미 채택된 풀이가 있습니다!");
       return;
     }
 
-    // 2. 권한 체크: 질문 작성자 본인 또는 관리자만 채택 가능
     const isOwner =
       userProfile &&
       selectedQuestion.author_id &&
@@ -749,18 +817,16 @@ export default function GosiApp() {
       return;
     }
 
-    // 3. 채택 상태 업데이트
     const { error } = await supabase
       .from("solutions")
       .update({ is_accepted: true })
       .eq("id", sol.id);
 
     if (error) {
-      alert("채택 처리 중 오류가 발생했습니다: " + error.message);
+      alert("채택 처리 중 오류 발생: " + error.message);
       return;
     }
 
-    // 4. 답변 작성자(author_id)의 user_profiles 계좌로 현상금 실제 송금!
     const bountyAmount = selectedQuestion.bounty || 0;
     if (sol.author_id) {
       const { data: receiverProfile } = await supabase
@@ -776,7 +842,6 @@ export default function GosiApp() {
           .update({ points: updatedReceiverPoints })
           .eq("id", sol.author_id);
 
-        // 만약 내가 내 답변을 채택(또는 테스트)한 경우 내 화면 포인트도 즉시 갱신
         if (userProfile && userProfile.id === sol.author_id) {
           setPoints(updatedReceiverPoints);
           setUserProfile({ ...userProfile, points: updatedReceiverPoints });
@@ -787,11 +852,10 @@ export default function GosiApp() {
 
     await fetchAllData();
     alert(
-      `🏆 풀이가 채택되었습니다! 답변자(${sol.author})님의 포인트 지갑으로 현상금 ${bountyAmount}P가 즉시 지급되었습니다!`
+      `🏆 풀이가 채택되었습니다! 답변자님의 지갑으로 현상금 ${bountyAmount}P가 즉시 지급되었습니다!`
     );
   };
 
-  // 🧭 MBTI 수험 전략 위키 글 등록 함수
   const handleCreateWikiPost = async () => {
     if (!wTitle.trim() || !wContent.trim()) {
       alert("전략 제목과 상세 내용을 모두 입력해 주세요!");
@@ -845,7 +909,11 @@ export default function GosiApp() {
     }
   };
 
-  // 질문 필터링 (과목 + 검색어 + 내 질문/스크랩 필터)
+  // ⭐ 단권화 PDF 인쇄 트리거 함수
+  const handlePrintPdfSummary = () => {
+    window.print();
+  };
+
   const filteredQuestions = questions.filter((q) => {
     const matchesSubject = selectedSubject === "전체" || q.subject === selectedSubject;
     const matchesSearch =
@@ -867,7 +935,6 @@ export default function GosiApp() {
     return matchesSubject && matchesSearch && matchesMode;
   });
 
-  // 현재 질문에 대해 채택 권한이 있는지 확인
   const canUserAcceptSelectedQuestion = Boolean(
     selectedQuestion &&
       !selectedQuestion.solutions.some((s) => s.is_accepted) &&
@@ -902,11 +969,10 @@ export default function GosiApp() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {/* 👤 사용자 로그인 / 프로필 영역 */}
           {userProfile ? (
             <div className="flex items-center gap-2 bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-full text-xs">
               <span className="font-bold text-emerald-300">
-                {userProfile.is_gosiban ? "🏅고시반" : "👤"} {userProfile.nickname}님
+                {equippedBadge} {userProfile.nickname}님
               </span>
               <button
                 onClick={handleUserLogout}
@@ -957,7 +1023,7 @@ export default function GosiApp() {
         </div>
       </header>
 
-      {/* 📢 상단 공지사항 배너 (클릭/터치 시 전체보기 팝업 오픈!) */}
+      {/* 📢 상단 공지사항 배너 */}
       <div
         onClick={() => setIsNoticeViewOpen(true)}
         className="bg-amber-500 hover:bg-amber-400 text-slate-950 px-4 md:px-6 py-2.5 font-bold text-xs md:text-sm flex justify-between items-center shadow-inner cursor-pointer transition"
@@ -970,7 +1036,7 @@ export default function GosiApp() {
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <span className="text-[11px] bg-amber-600/30 text-slate-900 px-2 py-0.5 rounded font-semibold">
-            🔍 터치하여 전체보기
+            🔍 전체보기
           </span>
           {isAdmin && (
             <button
@@ -981,7 +1047,7 @@ export default function GosiApp() {
               }}
               className="bg-slate-900 text-white text-xs px-2.5 py-1 rounded hover:bg-slate-800"
             >
-              ✏️ 공지 수정
+              ✏️ 수정
             </button>
           )}
         </div>
@@ -990,10 +1056,10 @@ export default function GosiApp() {
       {/* 상단 네비게이션 탭 */}
       <nav className="bg-white border-b border-slate-200 px-6 flex gap-2 overflow-x-auto">
         {[
-          { id: "qna", label: "📚 학업 Q&A (문제 헤드 & 논점 포인트)" },
+          { id: "qna", label: "📚 학업 Q&A (단권화 PDF 인쇄 지원)" },
           { id: "wiki", label: "🧭 수험 전략 위키 (MBTI 성향별)" },
           { id: "study", label: "🔥 원터치 스터디" },
-          { id: "wallet", label: "💳 포인트 & 내 정보" },
+          { id: "wallet", label: "💳 지갑 & 상점 (칭호/이모티콘)" },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -1030,37 +1096,46 @@ export default function GosiApp() {
                   </button>
                 </div>
 
-                {/* ⭐ 단권화 대비: 전체 / 내 질문 / 스크랩 필터 탭 */}
-                <div className="flex bg-slate-100 p-1 rounded-lg text-xs font-bold">
+                {/* ⭐ 단권화 PDF 인쇄 버튼 & 필터 탭 */}
+                <div className="space-y-2">
+                  <div className="flex bg-slate-100 p-1 rounded-lg text-xs font-bold">
+                    <button
+                      onClick={() => setQnaFilterMode("all")}
+                      className={`flex-1 py-1.5 rounded-md transition ${
+                        qnaFilterMode === "all"
+                          ? "bg-white text-slate-900 shadow-sm"
+                          : "text-slate-500 hover:text-slate-800"
+                      }`}
+                    >
+                      전체 ({questions.length})
+                    </button>
+                    <button
+                      onClick={() => setQnaFilterMode("my")}
+                      className={`flex-1 py-1.5 rounded-md transition ${
+                        qnaFilterMode === "my"
+                          ? "bg-white text-blue-600 shadow-sm"
+                          : "text-slate-500 hover:text-slate-800"
+                      }`}
+                    >
+                      내 질문
+                    </button>
+                    <button
+                      onClick={() => setQnaFilterMode("bookmarked")}
+                      className={`flex-1 py-1.5 rounded-md transition ${
+                        qnaFilterMode === "bookmarked"
+                          ? "bg-white text-amber-600 shadow-sm"
+                          : "text-slate-500 hover:text-slate-800"
+                      }`}
+                    >
+                      ⭐ 스크랩 ({bookmarkedIds.length})
+                    </button>
+                  </div>
+
                   <button
-                    onClick={() => setQnaFilterMode("all")}
-                    className={`flex-1 py-1.5 rounded-md transition ${
-                      qnaFilterMode === "all"
-                        ? "bg-white text-slate-900 shadow-sm"
-                        : "text-slate-500 hover:text-slate-800"
-                    }`}
+                    onClick={handlePrintPdfSummary}
+                    className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold py-2 px-3 rounded-lg text-xs flex items-center justify-center gap-1.5 shadow-sm transition"
                   >
-                    전체 질문 ({questions.length})
-                  </button>
-                  <button
-                    onClick={() => setQnaFilterMode("my")}
-                    className={`flex-1 py-1.5 rounded-md transition ${
-                      qnaFilterMode === "my"
-                        ? "bg-white text-blue-600 shadow-sm"
-                        : "text-slate-500 hover:text-slate-800"
-                    }`}
-                  >
-                    내가 한 질문
-                  </button>
-                  <button
-                    onClick={() => setQnaFilterMode("bookmarked")}
-                    className={`flex-1 py-1.5 rounded-md transition ${
-                      qnaFilterMode === "bookmarked"
-                        ? "bg-white text-amber-600 shadow-sm"
-                        : "text-slate-500 hover:text-slate-800"
-                    }`}
-                  >
-                    ⭐ 단권화 스크랩 ({bookmarkedIds.length})
+                    <span>🖨️ 나만의 단권화 요약집 PDF 인쇄 / 저장하기</span>
                   </button>
                 </div>
 
@@ -1101,7 +1176,7 @@ export default function GosiApp() {
               <div className="space-y-3">
                 {filteredQuestions.length === 0 ? (
                   <div className="bg-white border rounded-xl p-8 text-center text-sm text-slate-400">
-                    조건에 맞는 논점 질문이 없습니다.
+                    조건에 맞는 논점 질문이 없습니다. 별표(⭐)를 눌러 스크랩해 보세요!
                   </div>
                 ) : (
                   filteredQuestions.map((q) => {
@@ -1453,7 +1528,6 @@ export default function GosiApp() {
                         )}
                       </div>
 
-                      {/* 🕵️ 답변 익명 체크박스 */}
                       <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700 cursor-pointer select-none">
                         <input
                           type="checkbox"
@@ -1481,7 +1555,6 @@ export default function GosiApp() {
             </div>
           </div>
         ) : activeTab === "wiki" ? (
-          /* 🧭 5번 요청사항: MBTI 성향별 수험 전략 위키 */
           <div className="space-y-6">
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
               <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 border-b border-slate-100 pb-4">
@@ -1504,7 +1577,6 @@ export default function GosiApp() {
                 </button>
               </div>
 
-              {/* MBTI 4대 기질 선택 탭 */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 mt-4">
                 {MBTI_CATEGORIES.map((cat) => (
                   <button
@@ -1532,7 +1604,6 @@ export default function GosiApp() {
                 ))}
               </div>
 
-              {/* 선택된 성향 설명 배너 */}
               <div className="mt-4 bg-amber-50 border border-amber-200 px-4 py-3 rounded-xl text-xs text-amber-900 font-medium">
                 💡{" "}
                 <b>
@@ -1542,7 +1613,6 @@ export default function GosiApp() {
               </div>
             </div>
 
-            {/* 전략 게시글 카드 리스트 */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {filteredWikiPosts.map((post) => (
                 <div
@@ -1576,81 +1646,181 @@ export default function GosiApp() {
             </div>
           </div>
         ) : activeTab === "wallet" ? (
-          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm max-w-xl mx-auto space-y-6">
-            <h2 className="text-lg font-extrabold text-slate-900">💳 내 포인트 지갑 & 단권화 보관함</h2>
-            {userProfile ? (
-              <div className="space-y-4">
-                <div className="bg-slate-900 text-white p-5 rounded-xl flex justify-between items-center">
-                  <div>
-                    <p className="text-xs text-slate-400">현재 로그인된 계정</p>
-                    <p className="text-base font-bold mt-0.5">
-                      {userProfile.is_gosiban ? "🏅 고시반 입실생" : "👤 일반 수험생"} |{" "}
-                      {userProfile.nickname}
-                    </p>
-                    <p className="text-xs text-slate-400 mt-1">{userProfile.email}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs text-amber-300">보유 포인트</p>
-                    <p className="text-2xl font-extrabold text-amber-400 font-mono">
-                      {points.toLocaleString()} P
-                    </p>
-                  </div>
-                </div>
-
-                {/* 단권화 스크랩 현황 안내 */}
-                <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl text-xs text-slate-800 space-y-1.5">
-                  <p className="font-extrabold text-amber-900">
-                    ⭐ 나만의 단권화 아카이브 현황 (추후 PDF 추출 연동)
-                  </p>
-                  <p>
-                    • 현재 내가 스크랩(⭐)한 중요 논점 질문: <b>{bookmarkedIds.length}개</b>
-                  </p>
-                  <p className="text-[11px] text-slate-600">
-                    * 학업 Q&A 탭에서 별표(⭐)를 눌러 담아둔 질문과 내가 올린 질문들은 다음 업데이트에서 <b>나만의 단권화 PDF 파일</b>로 한 번에 내려받을 수 있습니다!
-                  </p>
-                </div>
-
-                <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl text-xs text-slate-700 space-y-1.5">
-                  <p className="font-bold text-blue-800">💡 포인트 경제 시스템 안내</p>
-                  <p>
-                    • 일반 텍스트 풀이 등록 시: <b>+50 P</b> 즉시 지급
-                  </p>
-                  <p>
-                    • 손글씨/사진 첨부 풀이 등록 시: <b>+100 P (2배 보너스!)</b>
-                  </p>
-                  <p>
-                    • 내 풀이가 질문자에게 <b>[🏆 채택]</b>될 경우: 질문에 걸린 <b>현상금 포인트 전액이 내 지갑으로 즉시 입금</b>됩니다!
-                  </p>
-                  <p>
-                    • 고시반 입실생 인증 회원 혜택: 초기 시드머니 <b>3,000 P</b> 및 전용 🏅뱃지 부여
-                  </p>
+          /* 💳 4번 탭: 지갑 & 열품타 스타일 칭호/이모티콘 상점 */
+          <div className="space-y-6 max-w-2xl mx-auto">
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-6">
+              <div className="flex justify-between items-center border-b pb-4">
+                <h2 className="text-lg font-extrabold text-slate-900">
+                  💳 내 포인트 지갑 & 프로필 상점
+                </h2>
+                <div className="bg-amber-100 text-amber-900 px-3 py-1.5 rounded-full text-sm font-extrabold font-mono">
+                  💰 {points.toLocaleString()} P
                 </div>
               </div>
-            ) : (
-              <div className="text-center py-8 space-y-4">
-                <p className="text-sm text-slate-600">
-                  로그인하시면 포인트 적립 및 답변 채택 현상금 수령이 내 계정에 영구 보관됩니다!
-                </p>
+
+              {/* 현재 장착 중인 칭호 관리 */}
+              <div className="bg-slate-900 text-white p-5 rounded-xl space-y-3">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="text-xs text-slate-400">내 닉네임 및 장착 칭호</p>
+                    <p className="text-base font-bold mt-1 text-amber-300">
+                      {userProfile ? `${equippedBadge} ${userProfile.nickname}님` : `${equippedBadge} 비회원님`}
+                    </p>
+                  </div>
+                  <span className="bg-emerald-400 text-slate-950 text-xs px-2.5 py-1 rounded font-extrabold">
+                    장착 중인 칭호
+                  </span>
+                </div>
+
+                <div>
+                  <p className="text-xs text-slate-400 mb-1.5">보유 중인 칭호 목록 (선택하여 장착)</p>
+                  <div className="flex gap-2 flex-wrap">
+                    {inventory.map((badgeName) => (
+                      <button
+                        key={badgeName}
+                        onClick={() => handleEquipBadge(badgeName)}
+                        className={`text-xs px-3 py-1.5 rounded-lg font-bold transition ${
+                          equippedBadge === badgeName
+                            ? "bg-amber-400 text-slate-950 ring-2 ring-white"
+                            : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                        }`}
+                      >
+                        {equippedBadge === badgeName ? `✅ ${badgeName}` : badgeName}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* 🛍️ 열품타 스타일 수험생 상점 */}
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-sm font-extrabold text-slate-900">
+                    🛍️ 수험생 칭호 및 이모티콘 상점
+                  </h3>
+                  <span className="text-xs text-slate-500">
+                    포인트를 모아 특별한 칭호를 구매해 보세요!
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {shopItems.map((item) => {
+                    const isOwned = inventory.includes(item.name);
+                    return (
+                      <div
+                        key={item.id}
+                        className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col justify-between space-y-3"
+                      >
+                        <div className="flex items-start gap-3">
+                          <span className="text-2xl p-2 bg-white rounded-lg border shadow-sm">
+                            {item.icon}
+                          </span>
+                          <div>
+                            <h4 className="font-extrabold text-slate-900 text-sm">
+                              {item.name}
+                            </h4>
+                            <p className="text-xs text-slate-500 mt-0.5">{item.description}</p>
+                          </div>
+                        </div>
+
+                        <div className="flex justify-between items-center pt-2 border-t border-slate-200">
+                          <span className="font-mono font-bold text-amber-600 text-xs">
+                            {item.price} P
+                          </span>
+                          {isOwned ? (
+                            <span className="bg-slate-200 text-slate-600 text-xs font-bold px-3 py-1.5 rounded-lg">
+                              보유 중
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => handleBuyItem(item)}
+                              className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition"
+                            >
+                              구매하기
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* ⭐ 단권화 PDF 인쇄 배너 */}
+              <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex justify-between items-center">
+                <div>
+                  <p className="font-extrabold text-amber-900 text-xs">
+                    🖨️ 나만의 단권화 요약집 PDF 인쇄
+                  </p>
+                  <p className="text-[11px] text-slate-600 mt-0.5">
+                    학업 Q&A 탭에서 스크랩(⭐)한 중요 논점들을 모아 즉시 인쇄/PDF로 저장하세요.
+                  </p>
+                </div>
                 <button
-                  onClick={() => {
-                    setAuthMode("login");
-                    setIsAuthModalOpen(true);
-                  }}
-                  className="bg-blue-600 text-white font-bold px-6 py-2.5 rounded-lg text-sm"
+                  onClick={handlePrintPdfSummary}
+                  className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold px-3.5 py-2 rounded-lg text-xs shrink-0 shadow-sm transition"
                 >
-                  🔑 로그인 / 회원가입 하러가기
+                  PDF 인쇄하기
                 </button>
               </div>
-            )}
+            </div>
           </div>
         ) : (
           <div className="bg-white p-12 rounded-xl border text-center text-slate-500">
-            해당 탭 기능은 순차적으로 오픈될 예정입니다! 현재는 <b>학업 Q&A</b>, <b>수험 전략 위키(MBTI)</b>, <b>포인트 & 내 정보</b> 탭을 이용해 주세요.
+            해당 탭 기능은 순차적으로 오픈될 예정입니다!
           </div>
         )}
       </main>
 
-      {/* 📢 2번 요청사항: 잘리지 않는 공지사항 전체보기 팝업 모달 */}
+      {/* ⭐ 단권화 PDF 인쇄 시 전용으로 깔끔하게 출력되는 인쇄 영역 (화면에는 평소 숨김) */}
+      <div className="hidden print:block print:p-8 print:bg-white print:text-slate-900">
+        <div className="text-center border-b-2 border-slate-900 pb-4 mb-6">
+          <h1 className="text-2xl font-black">CPA 고시반 단권화 논점 요약집</h1>
+          <p className="text-xs text-slate-600 mt-1">
+            출력일자: {new Date().toLocaleDateString()} | 스크랩된 중요 논점 모음
+          </p>
+        </div>
+
+        <div className="space-y-6">
+          {questions
+            .filter((q) => bookmarkedIds.includes(q.id))
+            .map((q, idx) => (
+              <div key={q.id} className="border-b border-slate-300 pb-5 space-y-2">
+                <div className="flex justify-between font-bold text-xs text-slate-700">
+                  <span>
+                    [{idx + 1}] {q.subject} | {q.book} ({q.page})
+                  </span>
+                  <span>현상금: {q.bounty}P</span>
+                </div>
+                <h3 className="font-extrabold text-base text-slate-900">
+                  🎯 포인트: {q.title}
+                </h3>
+                <p className="text-sm text-slate-800 whitespace-pre-line">{q.content}</p>
+
+                {q.solutions && q.solutions.length > 0 && (
+                  <div className="mt-3 pl-4 border-l-2 border-slate-400 space-y-2">
+                    <p className="text-xs font-bold text-slate-600">💡 강사별 채택/주요 와꾸 풀이:</p>
+                    {q.solutions.map((sol) => (
+                      <div key={sol.id} className="text-xs text-slate-800 space-y-1">
+                        <p className="font-bold">
+                          👨‍🏫 {sol.instructor} ({sol.author}) {sol.is_accepted ? "🏆[채택됨]" : ""}
+                        </p>
+                        <p className="whitespace-pre-line text-slate-700">{sol.content}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          {bookmarkedIds.length === 0 && (
+            <p className="text-center text-sm text-slate-500 py-10">
+              스크랩(⭐)된 질문이 없습니다. Q&A 아카이브에서 별표를 눌러 단권화에 담아보세요!
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* 📢 공지사항 전체보기 모달 */}
       {isNoticeViewOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4">
@@ -1730,9 +1900,7 @@ export default function GosiApp() {
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                전략 제목 (예: [INTP] 이해 안 되는 세법 논점 뚫어내는 법)
-              </label>
+              <label className="block text-xs font-bold text-slate-700 mb-1">전략 제목</label>
               <input
                 type="text"
                 value={wTitle}
@@ -1743,14 +1911,12 @@ export default function GosiApp() {
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                상세 공부법 및 꿀팁
-              </label>
+              <label className="block text-xs font-bold text-slate-700 mb-1">상세 공부법</label>
               <textarea
                 rows={5}
                 value={wContent}
                 onChange={(e) => setWContent(e.target.value)}
-                placeholder="같은 성향의 학우들에게 도움이 될 회독 팁, 시간 관리, 멘탈 관리법을 적어주세요!"
+                placeholder="회독 팁, 시간 관리, 멘탈 관리법을 적어주세요!"
                 className="w-full border border-slate-300 rounded-lg p-3 text-sm"
               />
             </div>
@@ -1833,9 +1999,7 @@ export default function GosiApp() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  비밀번호 (6자 이상)
-                </label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">비밀번호</label>
                 <input
                   type="password"
                   value={authPassword}
@@ -1848,9 +2012,7 @@ export default function GosiApp() {
               {authMode === "signup" && (
                 <>
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      활동 닉네임 (익명 체크 시 가려집니다)
-                    </label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">활동 닉네임</label>
                     <input
                       type="text"
                       value={authNickname}
@@ -1872,8 +2034,7 @@ export default function GosiApp() {
                       className="w-full border border-amber-300 rounded-lg px-3 py-1.5 text-xs bg-white"
                     />
                     <p className="text-[11px] text-amber-800">
-                      * 인증 코드(<b>skkucpa</b>) 입력 시 고시반 뱃지와 함께{" "}
-                      <b>3,000P 시드머니</b>가 즉시 지급됩니다! (미입력 일반 가입 시 1,000P 지급)
+                      * 인증 코드(<b>skkucpa</b>) 입력 시 <b>3,000P 시드머니</b> 즉시 지급!
                     </p>
                   </div>
                 </>
@@ -1885,11 +2046,7 @@ export default function GosiApp() {
               disabled={authLoading}
               className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-400 text-white font-bold py-2.5 rounded-lg text-sm transition"
             >
-              {authLoading
-                ? "처리 중..."
-                : authMode === "login"
-                ? "로그인하기"
-                : "가입하고 시드머니 받기"}
+              {authLoading ? "처리 중..." : authMode === "login" ? "로그인하기" : "가입하고 시드머니 받기"}
             </button>
           </div>
         </div>
@@ -1909,8 +2066,7 @@ export default function GosiApp() {
               </button>
             </div>
             <p className="text-xs text-slate-600">
-              관리자 비밀번호를 입력해 주세요. (기본 비밀번호:{" "}
-              <code className="bg-slate-100 font-bold text-blue-600">cpa1234</code>)
+              비밀번호: <code className="bg-slate-100 font-bold text-blue-600">cpa1234</code>
             </p>
             <input
               type="password"
@@ -1953,9 +2109,6 @@ export default function GosiApp() {
                 ✕
               </button>
             </div>
-            <p className="text-xs text-slate-600">
-              사용자들이 접속하자마자 볼 수 있는 상단 배너 문구를 수정하세요. (배너 터치 시 전문이 팝업으로 표시됩니다)
-            </p>
             <textarea
               rows={4}
               value={noticeInput}
@@ -2025,9 +2178,7 @@ export default function GosiApp() {
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                교재 및 강사 선택
-              </label>
+              <label className="block text-xs font-bold text-slate-700 mb-1">교재 선택</label>
               <select
                 value={qBook}
                 onChange={(e) => {
@@ -2060,7 +2211,6 @@ export default function GosiApp() {
               </div>
             </div>
 
-            {/* 페이지 및 문제 번호 선택 */}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
@@ -2129,7 +2279,6 @@ export default function GosiApp() {
               </div>
             </div>
 
-            {/* 💡 자동완성 안내 */}
             {targetPageToCheck && existingPointsForThisProblem.length > 0 && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-1.5">
                 <div className="flex items-center gap-1.5 text-xs font-extrabold text-amber-800">
@@ -2146,9 +2295,6 @@ export default function GosiApp() {
                     </span>
                   ))}
                 </div>
-                <p className="text-[11px] text-slate-600 mt-1">
-                  위 논점들과 겹치지 않는 <b>새로운 누락 포인트</b>가 있다면 아래에 입력해 주세요.
-                </p>
               </div>
             )}
 
@@ -2178,7 +2324,7 @@ export default function GosiApp() {
 
             <div className="flex flex-wrap items-center justify-between gap-2">
               <label className="cursor-pointer inline-block bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-3 py-2 rounded-lg border border-slate-300">
-                📸 문제 사진 / 내 필기 캡처 올리기
+                📸 문제 사진 / 필기 캡처 올리기
                 <input
                   type="file"
                   accept="image/*"
@@ -2187,7 +2333,6 @@ export default function GosiApp() {
                 />
               </label>
 
-              {/* 🕵️ 질문 익명 체크박스 */}
               <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700 cursor-pointer select-none">
                 <input
                   type="checkbox"
