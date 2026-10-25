@@ -177,7 +177,7 @@ export default function GosiApp() {
 
   // 📢 공지사항 상태 및 팝업 제어
   const [announcement, setAnnouncement] = useState(
-    "📢 [공지] 단권화 PDF 인쇄 기능 및 열품타 스타일 칭호 상점이 오픈되었습니다! 열심히 모은 포인트로 멋진 칭호를 장착해 보세요!"
+    "📢 [공지] 상단 및 Q&A 탭에 '단권화 PDF 인쇄 버튼'이 추가되었습니다! 중요 논점을 스크랩(⭐)하여 나만의 요약집을 PDF로 저장해 보세요!"
   );
   const [isNoticeViewOpen, setIsNoticeViewOpen] = useState(false);
   const [isEditingNotice, setIsEditingNotice] = useState(false);
@@ -310,7 +310,6 @@ export default function GosiApp() {
       setBooks(Array.from(new Set([...DEFAULT_BOOKS, ...customBooks])));
     }
 
-    // 상점 아이템 불러오기
     const { data: shopData } = await supabase.from("shop_items").select("*");
     if (shopData && shopData.length > 0) {
       setShopItems(shopData);
@@ -406,7 +405,6 @@ export default function GosiApp() {
     }
   };
 
-  // 칭호 장착 함수
   const handleEquipBadge = async (badgeName: string) => {
     setEquippedBadge(badgeName);
     localStorage.setItem("cpa_badge", badgeName);
@@ -420,7 +418,6 @@ export default function GosiApp() {
     alert(`✨ [${badgeName}] 칭호가 장착되었습니다!`);
   };
 
-  // 상점 아이템 구매 함수
   const handleBuyItem = async (item: ShopItem) => {
     if (points < item.price) {
       alert("포인트가 부족합니다! 열심히 답변하고 논점을 등록해 포인트를 모아보세요.");
@@ -448,7 +445,6 @@ export default function GosiApp() {
     alert(`🎁 [${item.name}] 구매 완료! 지갑 & 상점 탭에서 장착하실 수 있습니다.`);
   };
 
-  // 닉네임 옆에 장착한 칭호 배지 포함해서 반환하는 함수
   const getAuthorDisplayName = (isAnon: boolean) => {
     const badgePrefix = equippedBadge ? `[${equippedBadge}] ` : "";
     if (isAdmin && !isAnon) return `🛡️ 관리자 ${badgePrefix}`;
@@ -969,6 +965,14 @@ export default function GosiApp() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {/* ⭐ 헤더에도 눈에 띄는 단권화 PDF 인쇄 버튼 추가 */}
+          <button
+            onClick={handlePrintPdfSummary}
+            className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs px-3 py-2 rounded-full shadow transition flex items-center gap-1"
+          >
+            <span>🖨️ 단권화 PDF 인쇄</span>
+          </button>
+
           {userProfile ? (
             <div className="flex items-center gap-2 bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-full text-xs">
               <span className="font-bold text-emerald-300">
@@ -1096,46 +1100,45 @@ export default function GosiApp() {
                   </button>
                 </div>
 
-                {/* ⭐ 단권화 PDF 인쇄 버튼 & 필터 탭 */}
-                <div className="space-y-2">
-                  <div className="flex bg-slate-100 p-1 rounded-lg text-xs font-bold">
-                    <button
-                      onClick={() => setQnaFilterMode("all")}
-                      className={`flex-1 py-1.5 rounded-md transition ${
-                        qnaFilterMode === "all"
-                          ? "bg-white text-slate-900 shadow-sm"
-                          : "text-slate-500 hover:text-slate-800"
-                      }`}
-                    >
-                      전체 ({questions.length})
-                    </button>
-                    <button
-                      onClick={() => setQnaFilterMode("my")}
-                      className={`flex-1 py-1.5 rounded-md transition ${
-                        qnaFilterMode === "my"
-                          ? "bg-white text-blue-600 shadow-sm"
-                          : "text-slate-500 hover:text-slate-800"
-                      }`}
-                    >
-                      내 질문
-                    </button>
-                    <button
-                      onClick={() => setQnaFilterMode("bookmarked")}
-                      className={`flex-1 py-1.5 rounded-md transition ${
-                        qnaFilterMode === "bookmarked"
-                          ? "bg-white text-amber-600 shadow-sm"
-                          : "text-slate-500 hover:text-slate-800"
-                      }`}
-                    >
-                      ⭐ 스크랩 ({bookmarkedIds.length})
-                    </button>
-                  </div>
+                {/* ⭐ 가장 눈에 띄는 상단 단권화 PDF 인쇄 버튼 */}
+                <button
+                  onClick={handlePrintPdfSummary}
+                  className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-2 shadow transition"
+                >
+                  <span className="text-base">🖨️</span>
+                  <span>⭐ 스크랩한 논점 모아 단권화 PDF 인쇄하기</span>
+                </button>
 
+                <div className="flex bg-slate-100 p-1 rounded-lg text-xs font-bold">
                   <button
-                    onClick={handlePrintPdfSummary}
-                    className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold py-2 px-3 rounded-lg text-xs flex items-center justify-center gap-1.5 shadow-sm transition"
+                    onClick={() => setQnaFilterMode("all")}
+                    className={`flex-1 py-1.5 rounded-md transition ${
+                      qnaFilterMode === "all"
+                        ? "bg-white text-slate-900 shadow-sm"
+                        : "text-slate-500 hover:text-slate-800"
+                    }`}
                   >
-                    <span>🖨️ 나만의 단권화 요약집 PDF 인쇄 / 저장하기</span>
+                    전체 ({questions.length})
+                  </button>
+                  <button
+                    onClick={() => setQnaFilterMode("my")}
+                    className={`flex-1 py-1.5 rounded-md transition ${
+                      qnaFilterMode === "my"
+                        ? "bg-white text-blue-600 shadow-sm"
+                        : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    내 질문
+                  </button>
+                  <button
+                    onClick={() => setQnaFilterMode("bookmarked")}
+                    className={`flex-1 py-1.5 rounded-md transition ${
+                      qnaFilterMode === "bookmarked"
+                        ? "bg-white text-amber-600 shadow-sm"
+                        : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    ⭐ 스크랩 ({bookmarkedIds.length})
                   </button>
                 </div>
 
@@ -1646,7 +1649,6 @@ export default function GosiApp() {
             </div>
           </div>
         ) : activeTab === "wallet" ? (
-          /* 💳 4번 탭: 지갑 & 열품타 스타일 칭호/이모티콘 상점 */
           <div className="space-y-6 max-w-2xl mx-auto">
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-6">
               <div className="flex justify-between items-center border-b pb-4">
@@ -1658,7 +1660,6 @@ export default function GosiApp() {
                 </div>
               </div>
 
-              {/* 현재 장착 중인 칭호 관리 */}
               <div className="bg-slate-900 text-white p-5 rounded-xl space-y-3">
                 <div className="flex justify-between items-center">
                   <div>
@@ -1692,7 +1693,6 @@ export default function GosiApp() {
                 </div>
               </div>
 
-              {/* 🛍️ 열품타 스타일 수험생 상점 */}
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
                   <h3 className="text-sm font-extrabold text-slate-900">
@@ -1746,7 +1746,6 @@ export default function GosiApp() {
                 </div>
               </div>
 
-              {/* ⭐ 단권화 PDF 인쇄 배너 */}
               <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex justify-between items-center">
                 <div>
                   <p className="font-extrabold text-amber-900 text-xs">
@@ -1772,7 +1771,7 @@ export default function GosiApp() {
         )}
       </main>
 
-      {/* ⭐ 단권화 PDF 인쇄 시 전용으로 깔끔하게 출력되는 인쇄 영역 (화면에는 평소 숨김) */}
+      {/* ⭐ 단권화 PDF 인쇄 시 전용으로 깔끔하게 출력되는 인쇄 영역 */}
       <div className="hidden print:block print:p-8 print:bg-white print:text-slate-900">
         <div className="text-center border-b-2 border-slate-900 pb-4 mb-6">
           <h1 className="text-2xl font-black">CPA 고시반 단권화 논점 요약집</h1>
