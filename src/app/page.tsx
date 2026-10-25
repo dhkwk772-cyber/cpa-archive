@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
 
-// ⭐ 기존 방식 그대로 유지된 Supabase URL 및 ANON KEY
 const SUPABASE_URL = "https://yrvkdmndajzdmnukpuga.supabase.co/";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlydmtkbW5kYWp6ZG1udWtwdWdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI4MDY4MjMsImV4cCI6MjEwODM4MjgyM30.UdXFYQoamyQb0yv2xvNlRNv9xXhdd7rprgHs0So3dhs";
 
@@ -147,16 +146,13 @@ export default function GosiApp() {
   const [activeInstructorTab, setActiveInstructorTab] = useState(0);
   const [loading, setLoading] = useState(true);
 
-  // ⭐ 단권화 PDF 및 스크랩 필터 상태
   const [bookmarkedIds, setBookmarkedIds] = useState<number[]>([]);
   const [qnaFilterMode, setQnaFilterMode] = useState<"all" | "my" | "bookmarked">("all");
 
-  // 🎨 상점 및 인벤토리 상태
   const [shopItems, setShopItems] = useState<ShopItem[]>([]);
   const [equippedBadge, setEquippedBadge] = useState<string>("🐣 동차합격 기원");
   const [inventory, setInventory] = useState<string[]>(["🐣 동차합격 기원"]);
 
-  // 👤 사용자 로그인 및 프로필 상태
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
@@ -166,38 +162,31 @@ export default function GosiApp() {
   const [gosibanCode, setGosibanCode] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
 
-  // 🕵️ 익명 설정 상태
   const [isQuestionAnonymous, setIsQuestionAnonymous] = useState(true);
   const [isAnswerAnonymous, setIsAnswerAnonymous] = useState(true);
 
-  // 🔒 관리자 모드 상태
   const [isAdmin, setIsAdmin] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [adminPasswordInput, setAdminPasswordInput] = useState("");
 
-  // 📢 공지사항 상태 및 팝업 제어
   const [announcement, setAnnouncement] = useState(
-    "📢 [공지] 상단 및 Q&A 탭에 '단권화 PDF 인쇄 버튼'이 추가되었습니다! 중요 논점을 스크랩(⭐)하여 나만의 요약집을 PDF로 저장해 보세요!"
+    "📢 [공지] 빌드 에러가 수정되었습니다! 상단 및 Q&A 탭의 '단권화 PDF 인쇄 버튼'을 활용해 중요 논점을 모아보세요!"
   );
   const [isNoticeViewOpen, setIsNoticeViewOpen] = useState(false);
   const [isEditingNotice, setIsEditingNotice] = useState(false);
   const [noticeInput, setNoticeInput] = useState("");
 
-  // 🔍 검색 및 필터 상태
   const [selectedSubject, setSelectedSubject] = useState("전체");
   const [searchQuery, setSearchQuery] = useState("");
 
-  // 강사 및 교재 목록 상태
   const [instructors, setInstructors] = useState<string[]>(DEFAULT_INSTRUCTORS);
   const [books, setBooks] = useState<string[]>(DEFAULT_BOOKS);
 
-  // 답변 입력 상태
   const [newInstructor, setNewInstructor] = useState("");
   const [newAnswerText, setNewAnswerText] = useState("");
   const [selectedAnswerInstructor, setSelectedAnswerInstructor] = useState("이승철 와꾸");
   const [answerImage, setAnswerImage] = useState<string | null>(null);
 
-  // 새 질문 등록 모달 상태
   const [isAskModalOpen, setIsAskModalOpen] = useState(false);
   const [qLevel, setQLevel] = useState("2차");
   const [qSubject, setQSubject] = useState("세법");
@@ -213,7 +202,6 @@ export default function GosiApp() {
   const [qBounty, setQBounty] = useState(200);
   const [qImage, setQImage] = useState<string | null>(null);
 
-  // 🧭 MBTI 수험 전략 위키 상태
   const [selectedMbtiGroup, setSelectedMbtiGroup] = useState<string>("ALL");
   const [wikiPosts, setWikiPosts] = useState<WikiPost[]>(INITIAL_WIKI_POSTS);
   const [isWikiModalOpen, setIsWikiModalOpen] = useState(false);
@@ -222,10 +210,8 @@ export default function GosiApp() {
   const [wContent, setWContent] = useState("");
   const [isWikiAnonymous, setIsWikiAnonymous] = useState(false);
 
-  // 이미지 확대 보기
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
-  // 유저 프로필 불러오기 함수
   const fetchUserProfile = async (userId: string, email: string) => {
     if (!supabase) return;
     const { data } = await supabase
@@ -905,7 +891,6 @@ export default function GosiApp() {
     }
   };
 
-  // ⭐ 단권화 PDF 인쇄 트리거 함수
   const handlePrintPdfSummary = () => {
     window.print();
   };
@@ -948,7 +933,6 @@ export default function GosiApp() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
-      {/* 상단 헤더 */}
       <header className="bg-slate-900 text-white px-4 md:px-6 py-3.5 flex flex-wrap justify-between items-center sticky top-0 z-20 shadow-md gap-2">
         <div className="flex items-center gap-2.5">
           <span className="bg-emerald-400 text-slate-900 font-extrabold px-2 py-0.5 rounded text-xs">
@@ -965,7 +949,6 @@ export default function GosiApp() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {/* ⭐ 헤더에도 눈에 띄는 단권화 PDF 인쇄 버튼 추가 */}
           <button
             onClick={handlePrintPdfSummary}
             className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs px-3 py-2 rounded-full shadow transition flex items-center gap-1"
@@ -1027,7 +1010,6 @@ export default function GosiApp() {
         </div>
       </header>
 
-      {/* 📢 상단 공지사항 배너 */}
       <div
         onClick={() => setIsNoticeViewOpen(true)}
         className="bg-amber-500 hover:bg-amber-400 text-slate-950 px-4 md:px-6 py-2.5 font-bold text-xs md:text-sm flex justify-between items-center shadow-inner cursor-pointer transition"
@@ -1057,7 +1039,6 @@ export default function GosiApp() {
         </div>
       </div>
 
-      {/* 상단 네비게이션 탭 */}
       <nav className="bg-white border-b border-slate-200 px-6 flex gap-2 overflow-x-auto">
         {[
           { id: "qna", label: "📚 학업 Q&A (단권화 PDF 인쇄 지원)" },
@@ -1079,7 +1060,6 @@ export default function GosiApp() {
         ))}
       </nav>
 
-      {/* 메인 콘텐츠 영역 */}
       <main className="flex-1 max-w-6xl w-full mx-auto p-4 md:p-6">
         {loading ? (
           <div className="text-center py-20 text-slate-500 font-semibold">
@@ -1087,7 +1067,6 @@ export default function GosiApp() {
           </div>
         ) : activeTab === "qna" ? (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* 왼쪽: 문제 헤드 & 논점 포인트 리스트 */}
             <div className="lg:col-span-5 space-y-4">
               <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
                 <div className="flex justify-between items-center">
@@ -1100,7 +1079,6 @@ export default function GosiApp() {
                   </button>
                 </div>
 
-                {/* ⭐ 가장 눈에 띄는 상단 단권화 PDF 인쇄 버튼 */}
                 <button
                   onClick={handlePrintPdfSummary}
                   className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-2 shadow transition"
@@ -1265,7 +1243,6 @@ export default function GosiApp() {
               </div>
             </div>
 
-            {/* 오른쪽: 선택된 논점 포인트 상세 & 강사별 와꾸 비교 */}
             <div className="lg:col-span-7 space-y-6">
               {selectedQuestion ? (
                 <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
@@ -1339,7 +1316,6 @@ export default function GosiApp() {
                     </div>
                   )}
 
-                  {/* 강사별 풀이 비교 탭 */}
                   <div className="border-t border-slate-200 pt-5">
                     <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
                       <h3 className="text-sm font-bold text-slate-800">
@@ -1457,7 +1433,6 @@ export default function GosiApp() {
                     )}
                   </div>
 
-                  {/* 새로운 강사 풀이 추가 폼 */}
                   <div className="mt-6 border-t border-slate-200 pt-5">
                     <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
                       <h4 className="text-sm font-bold text-slate-800">
@@ -1776,7 +1751,7 @@ export default function GosiApp() {
         <div className="text-center border-b-2 border-slate-900 pb-4 mb-6">
           <h1 className="text-2xl font-black">CPA 고시반 단권화 논점 요약집</h1>
           <p className="text-xs text-slate-600 mt-1">
-            출력일자: {new Date().toLocaleDateString()} | 스크랩된 중요 논점 모음
+            CPA 고시반 지식 아카이브 | 스크랩된 중요 논점 모음
           </p>
         </div>
 
@@ -1819,7 +1794,6 @@ export default function GosiApp() {
         </div>
       </div>
 
-      {/* 📢 공지사항 전체보기 모달 */}
       {isNoticeViewOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4">
@@ -1866,7 +1840,6 @@ export default function GosiApp() {
         </div>
       )}
 
-      {/* ✍️ MBTI 수험 전략 위키 작성 모달 */}
       {isWikiModalOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl space-y-4">
@@ -1950,7 +1923,6 @@ export default function GosiApp() {
         </div>
       )}
 
-      {/* 🔑 사용자 로그인 / 회원가입 모달 */}
       {isAuthModalOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4">
@@ -2051,7 +2023,6 @@ export default function GosiApp() {
         </div>
       )}
 
-      {/* 🔒 관리자 로그인 모달 */}
       {isLoginModalOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl space-y-4">
@@ -2095,7 +2066,6 @@ export default function GosiApp() {
         </div>
       )}
 
-      {/* ✏️ 공지사항 수정 모달 */}
       {isEditingNotice && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4">
@@ -2132,7 +2102,6 @@ export default function GosiApp() {
         </div>
       )}
 
-      {/* ✍️ 새 논점 질문 등록 모달 */}
       {isAskModalOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl space-y-4 max-h-[90vh] overflow-y-auto">
@@ -2373,7 +2342,6 @@ export default function GosiApp() {
         </div>
       )}
 
-      {/* 🔍 이미지 확대 보기 모달 */}
       {previewImage && (
         <div
           onClick={() => setPreviewImage(null)}
